@@ -258,6 +258,7 @@ client.on(Events.MessageCreate, async message => {
             await fs.mkdir(categoryFolder, { recursive: true });
 
             const channels = category.children.cache.filter(c => c.type === ChannelType.GuildText);
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             
             for (const [channelId, channel] of channels) {
                 console.log(`Lendo canal: ${channel.name}`);
@@ -274,6 +275,9 @@ client.on(Events.MessageCreate, async message => {
                     await fs.writeFile(fullPath, result.yaml, 'utf8');
                     console.log(`Salvo: ${fullPath}`);
                 }
+
+                console.log("Pausando 15 segundos para evitar bloqueio (limite de requisições) da API do Gemini...");
+                await sleep(15000);
             }
 
             await message.react('🧠');
