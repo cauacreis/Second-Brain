@@ -152,10 +152,23 @@ async function transcribeHistory(messages, targetFolderStr) {
         ${historyRaw}
         `;
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-        });
+        let response;
+        let retries = 3;
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        while(retries > 0) {
+            try {
+                response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: prompt,
+                });
+                break;
+            } catch(err) {
+                retries--;
+                if(retries === 0) throw err;
+                console.log(`Erro na IA. Retentativas restantes: ${retries}. Aguardando 20s...`);
+                await sleep(20000);
+            }
+        }
 
         const today = new Date();
         const dateStr = today.toISOString().split('T')[0];
@@ -264,16 +277,21 @@ client.on(Events.MessageCreate, async message => {
                 console.log(`Lendo canal: ${channel.name}`);
                 const fetchedMessages = await channel.messages.fetch({ limit: 100 });
                 
-                // Pass relative path so attachments go to the same folder
-                const relativePath = path.join('00_Inbox', safeCatName);
-                const result = await transcribeHistory(fetchedMessages, relativePath);
-                
-                if (result) {
-                    // Override filename to be the channel name
-                    const customFilename = `${channel.name.replace(/[^a-zA-Z0-9 -]/g, '')}.md`;
-                    const fullPath = path.join(categoryFolder, customFilename);
-                    await fs.writeFile(fullPath, result.yaml, 'utf8');
-                    console.log(`Salvo: ${fullPath}`);
+                try {
+                    // Pass relative path so attachments go to the same folder
+                    const relativePath = path.join('00_Inbox', safeCatName);
+                    const result = await transcribeHistory(fetchedMessages, relativePath);
+                    
+                    if (result) {
+                        // Override filename to be the channel name
+                        const customFilename = `${channel.name.replace(/[^a-zA-Z0-9 -]/g, '')}.md`;
+                        const fullPath = path.join(categoryFolder, customFilename);
+                        await fs.writeFile(fullPath, result.yaml, 'utf8');
+                        console.log(`Salvo: ${fullPath}`);
+                    }
+                } catch(channelErr) {
+                    console.error(`Falha ao processar o canal ${channel.name}:`, channelErr);
+                    await message.channel.send(`⚠️ Pulei o canal **${channel.name}** devido a erro na API. Continuando com os próximos...`);
                 }
 
                 console.log("Pausando 35 segundos para evitar bloqueio (limite de requisições) da API do Gemini...");
