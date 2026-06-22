@@ -290,14 +290,18 @@ client.on(Events.MessageCreate, async message => {
                 const fetchedMessages = await channel.messages.fetch({ limit: 100 });
                 
                 try {
-                    // Pass relative path so attachments go to the same folder
-                    const relativePath = path.join('00_Inbox', safeCatName);
-                    const result = await transcribeHistory(fetchedMessages, relativePath);
+                    const safeChannelName = channel.name.replace(/[^a-zA-Z0-9 -]/g, '');
+                    const channelFolderRelative = path.join('00_Inbox', safeCatName, safeChannelName);
+                    const channelFolderAbsolute = path.join(VAULT_PATH, channelFolderRelative);
+                    
+                    // Cria a subpasta específica para o canal
+                    await fs.mkdir(channelFolderAbsolute, { recursive: true });
+
+                    const result = await transcribeHistory(fetchedMessages, channelFolderRelative);
                     
                     if (result) {
-                        // Override filename to be the channel name
-                        const customFilename = `${channel.name.replace(/[^a-zA-Z0-9 -]/g, '')}.md`;
-                        const fullPath = path.join(categoryFolder, customFilename);
+                        const customFilename = `${safeChannelName}.md`;
+                        const fullPath = path.join(channelFolderAbsolute, customFilename);
                         await fs.writeFile(fullPath, result.yaml, 'utf8');
                         console.log(`Salvo: ${fullPath}`);
                         
