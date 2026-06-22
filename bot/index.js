@@ -26,7 +26,7 @@ const client = new Client({
     ],
 });
 
-// Helper to determine the folder
+// Helper to determine the folder for SINGLE messages
 async function decideFolder(messageContent) {
     try {
         const prompt = `
@@ -48,24 +48,22 @@ async function decideFolder(messageContent) {
 
         const answer = response.text.trim();
         
-        // Validation
         const validFolders = ['00_Inbox', '10_Projetos', '20_Areas', '30_Recursos'];
         if (validFolders.includes(answer)) {
             return answer;
         }
-        return '00_Inbox'; // Fallback
+        return '00_Inbox';
     } catch (error) {
         console.error("Erro na IA:", error);
-        return '00_Inbox'; // Fallback
+        return '00_Inbox';
     }
 }
 
-// Format the Markdown content
-function formatNote(content, authorName) {
+// Format single message
+function formatSingleNote(content, authorName) {
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0];
     
-    // Extract a short title from the first line
     const titleRaw = content.split('\n')[0].replace(/[^\w\s-]/gi, '').trim();
     const title = titleRaw.split(' ').slice(0, 5).join(' ') || 'Nota-do-Discord';
 
@@ -82,12 +80,75 @@ ${content}
 *Enviado por ${authorName} via Discord*
 `;
     
-    // Generate safe filename
     const safeTitle = title.replace(/\s+/g, '-').toLowerCase();
     const timestamp = today.getTime();
     const filename = `${safeTitle}-${timestamp}.md`;
 
     return { yaml, filename };
+}
+
+// Generate history synthesis
+async function synthesizeHistory(messages) {
+    try {
+        let historyRaw = "";
+        
+        messages.reverse().forEach(msg => {
+            // Ignore bot's own messages to avoid infinite loops of reading its own summaries
+            if (msg.author.bot) return;
+
+            let mediaText = "";
+            if (msg.attachments.size > 0) {
+                const urls = msg.attachments.map(a => a.url).join(', ');
+                mediaText = `\n[Mídia Anexada: ${urls}]`;
+            }
+
+            historyRaw += `[${msg.author.username}]: ${msg.content} ${mediaText}\n---\n`;
+        });
+
+        const prompt = `
+        Atue como um arquivista e organizador especialista.
+        Abaixo está o histórico bruto das últimas 100 mensagens de um canal do Discord.
+        
+        Sua tarefa:
+        1. Limpe o histórico, transformando-o em um documento coeso e fluido.
+        2. Corrija erros óbvios de digitação e gramática.
+        3. Organize a informação por tópicos abordados.
+        4. PRESERVE TODOS OS LINKS e URLs de mídia (imagens/vídeos). Use a sintaxe Markdown para exibir as imagens se for o caso: ![imagem](url).
+        5. Não invente nenhuma informação nova, apenas reestruture o que foi dito.
+        6. Crie um breve resumo executivo no início.
+        
+        Retorne APENAS o conteúdo em Markdown pronto para ser salvo.
+        
+        HISTÓRICO BRUTO:
+        ${historyRaw}
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+        });
+
+        const today = new Date();
+        const dateStr = today.toISOString().split('T')[0];
+        
+        const yaml = `---
+aliases: [sintese-canal]
+tags: [#discord-sintese, #antigravity-brain]
+criado_em: ${dateStr}
+---
+# Síntese do Canal
+*Gerado por Inteligência Artificial a partir das últimas 100 mensagens.*
+
+${response.text}
+`;
+        
+        const filename = `Sintese-Discord-${today.getTime()}.md`;
+        return { yaml, filename };
+
+    } catch (error) {
+        console.error("Erro na síntese da IA:", error);
+        throw error;
+    }
 }
 
 client.once(Events.ClientReady, readyClient => {
@@ -96,26 +157,49 @@ client.once(Events.ClientReady, readyClient => {
 });
 
 client.on(Events.MessageCreate, async message => {
-    // Ignore bots
     if (message.author.bot) return;
 
-    console.log(`\nRecebido: "${message.content.substring(0, 50)}..."`);
+    // ======== MODO ARQUIVISTA (SÍNTESE DE HISTÓRICO) ========
+    if (message.mentions.has(client.user.id)) {
+        try {
+            console.log("Iniciando Modo Arquivista...");
+            await message.react('⏳');
 
-    // 1. Decide where it goes
+            // Fetch last 100 messages (includes the command message)
+            const fetchedMessages = await message.channel.messages.fetch({ limit: 100 });
+            
+            console.log(`Analisando ${fetchedMessages.size} mensagens...`);
+            const { yaml, filename } = await synthesizeHistory(fetchedMessages);
+            
+            // Always save syntheses to 00_Inbox as requested
+            const fullPath = path.join(VAULT_PATH, '00_Inbox', filename);
+            await fs.writeFile(fullPath, yaml, 'utf8');
+            
+            console.log(`✅ Síntese salva em: ${fullPath}`);
+            await message.react('🧠');
+            await message.reply("✅ Histórico analisado, corrigido e salvo na sua `00_Inbox` do Obsidian!");
+
+        } catch (error) {
+            console.error("Erro no Modo Arquivista:", error);
+            await message.react('❌');
+            await message.reply("Houve um erro ao processar o histórico.");
+        }
+        return; // Stop here, don't run the single-message logic
+    }
+
+    // ======== MODO SILENCIOSO (MENSAGEM ÚNICA) ========
+    console.log(`\nRecebido: "${message.content.substring(0, 50)}..."`);
     console.log("Pensando na melhor pasta...");
+    
     const folder = await decideFolder(message.content);
     console.log(`Decisão: ${folder}`);
 
-    // 2. Format the content
-    const { yaml, filename } = formatNote(message.content, message.author.username);
+    const { yaml, filename } = formatSingleNote(message.content, message.author.username);
 
-    // 3. Save to Obsidian Vault
     try {
         const fullPath = path.join(VAULT_PATH, folder, filename);
         await fs.writeFile(fullPath, yaml, 'utf8');
         console.log(`✅ Salvo com sucesso em: ${fullPath}`);
-        
-        // Optional: React to the message to show success
         await message.react('🧠');
     } catch (error) {
         console.error("Erro ao salvar arquivo:", error);
