@@ -1,0 +1,20 @@
+# Node modules
+node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Obsidian specifics (just in case someone runs this inside a vault)
+.obsidian/
+.trash/
+
+# OS generated files
+.DS_Store
+Thumbs.db
