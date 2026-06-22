@@ -276,8 +276,8 @@ client.on(Events.MessageCreate, async message => {
                     console.log(`Salvo: ${fullPath}`);
                 }
 
-                console.log("Pausando 15 segundos para evitar bloqueio (limite de requisições) da API do Gemini...");
-                await sleep(15000);
+                console.log("Pausando 35 segundos para evitar bloqueio (limite de requisições) da API do Gemini...");
+                await sleep(35000);
             }
 
             await message.react('🧠');
