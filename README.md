@@ -7,6 +7,7 @@ Um ecossistema Open Source desenhado para unificar as suas anotações. Ele cone
 Em vez de ter informações espalhadas por vários lugares, este projeto transforma o seu **Obsidian** no núcleo central do seu conhecimento:
 1. **Ponte Discord:** Um Bot em Node.js com IA que "escuta" o seu servidor privado do Discord. Sempre que você mandar uma mensagem (uma ideia, um link, um resumo), o bot usa a API do Gemini para descobrir do que se trata e salva automaticamente um arquivo Markdown na pasta correta do seu Obsidian.
 2. **Ponte Antigravity:** Uma configuração (Skill) que ensina o seu assistente local Antigravity a ler, pesquisar e salvar dados no seu Obsidian, não importa em qual projeto você esteja trabalhando.
+3. **Suporte a Anexos Offline:** Se você enviar imagens, PDFs ou documentos no Discord, o bot fará o download físico desses arquivos e os salvará diretamente na mesma pasta da sua anotação no Obsidian, gerando links nativos (`![[imagem.png]]`). Adeus links quebrados!
 
 ---
 

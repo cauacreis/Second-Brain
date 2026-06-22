@@ -2,6 +2,8 @@ import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { GoogleGenAI } from '@google/genai';
 import * as dotenv from 'dotenv';
 import fs from 'fs/promises';
+import { createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
 import path from 'path';
 
 // Load environment variables
@@ -26,7 +28,28 @@ const client = new Client({
     ],
 });
 
-// Helper to determine the folder for SINGLE messages
+// Download helper
+async function downloadFile(url, destPath) {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Unexpected response ${response.statusText}`);
+        
+        // Use stream pipeline for better memory management with large files (PDFs, videos)
+        await pipeline(response.body, createWriteStream(destPath));
+        return true;
+    } catch (error) {
+        console.error(`Erro ao baixar arquivo de ${url}:`, error);
+        return false;
+    }
+}
+
+// Check if file is image for markdown syntax
+function isImage(filename) {
+    const ext = path.extname(filename).toLowerCase();
+    return ['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext);
+}
+
+// Helper to determine the folder
 async function decideFolder(messageContent) {
     try {
         const prompt = `
@@ -47,12 +70,8 @@ async function decideFolder(messageContent) {
         });
 
         const answer = response.text.trim();
-        
         const validFolders = ['00_Inbox', '10_Projetos', '20_Areas', '30_Recursos'];
-        if (validFolders.includes(answer)) {
-            return answer;
-        }
-        return '00_Inbox';
+        return validFolders.includes(answer) ? answer : '00_Inbox';
     } catch (error) {
         console.error("Erro na IA:", error);
         return '00_Inbox';
@@ -92,28 +111,39 @@ async function synthesizeHistory(messages) {
     try {
         let historyRaw = "";
         
-        messages.reverse().forEach(msg => {
-            // Ignore bot's own messages to avoid infinite loops of reading its own summaries
-            if (msg.author.bot) return;
+        for (const msg of messages.reverse().values()) {
+            if (msg.author.bot) continue;
 
-            let mediaText = "";
+            let contentWithLocalFiles = msg.content;
+            
+            // Download attachments for history and add Obsidian links
             if (msg.attachments.size > 0) {
-                const urls = msg.attachments.map(a => a.url).join(', ');
-                mediaText = `\n[Mídia Anexada: ${urls}]`;
+                for (const attachment of msg.attachments.values()) {
+                    const safeFilename = `${Date.now()}-${attachment.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+                    const targetFolder = '00_Inbox'; // Synthesis always goes to 00_Inbox
+                    const destPath = path.join(VAULT_PATH, targetFolder, safeFilename);
+                    
+                    const downloaded = await downloadFile(attachment.url, destPath);
+                    if (downloaded) {
+                        const obsidianLink = isImage(safeFilename) ? `![[${safeFilename}]]` : `[[${safeFilename}]]`;
+                        contentWithLocalFiles += `\n${obsidianLink}`;
+                    }
+                }
             }
 
-            historyRaw += `[${msg.author.username}]: ${msg.content} ${mediaText}\n---\n`;
-        });
+            historyRaw += `[${msg.author.username}]: ${contentWithLocalFiles}\n---\n`;
+        }
 
         const prompt = `
         Atue como um arquivista e organizador especialista.
         Abaixo está o histórico bruto das últimas 100 mensagens de um canal do Discord.
+        Muitas mensagens possuem links nativos do Obsidian como ![[imagem.png]] ou [[documento.pdf]].
         
         Sua tarefa:
         1. Limpe o histórico, transformando-o em um documento coeso e fluido.
         2. Corrija erros óbvios de digitação e gramática.
         3. Organize a informação por tópicos abordados.
-        4. PRESERVE TODOS OS LINKS e URLs de mídia (imagens/vídeos). Use a sintaxe Markdown para exibir as imagens se for o caso: ![imagem](url).
+        4. PRESERVE TODOS OS LINKS DO OBSIDIAN EXATAMENTE COMO ESTÃO (![[...]] e [[...]]). Não mude o formato deles.
         5. Não invente nenhuma informação nova, apenas reestruture o que foi dito.
         6. Crie um breve resumo executivo no início.
         
@@ -165,36 +195,51 @@ client.on(Events.MessageCreate, async message => {
             console.log("Iniciando Modo Arquivista...");
             await message.react('⏳');
 
-            // Fetch last 100 messages (includes the command message)
             const fetchedMessages = await message.channel.messages.fetch({ limit: 100 });
+            console.log(`Analisando ${fetchedMessages.size} mensagens e baixando anexos...`);
             
-            console.log(`Analisando ${fetchedMessages.size} mensagens...`);
             const { yaml, filename } = await synthesizeHistory(fetchedMessages);
             
-            // Always save syntheses to 00_Inbox as requested
             const fullPath = path.join(VAULT_PATH, '00_Inbox', filename);
             await fs.writeFile(fullPath, yaml, 'utf8');
             
             console.log(`✅ Síntese salva em: ${fullPath}`);
             await message.react('🧠');
-            await message.reply("✅ Histórico analisado, corrigido e salvo na sua `00_Inbox` do Obsidian!");
+            await message.reply("✅ Histórico analisado e anexos salvos na sua `00_Inbox`!");
 
         } catch (error) {
             console.error("Erro no Modo Arquivista:", error);
             await message.react('❌');
             await message.reply("Houve um erro ao processar o histórico.");
         }
-        return; // Stop here, don't run the single-message logic
+        return;
     }
 
-    // ======== MODO SILENCIOSO (MENSAGEM ÚNICA) ========
+    // ======== MODO SILENCIOSO (MENSAGEM ÚNICA COM ANEXOS) ========
     console.log(`\nRecebido: "${message.content.substring(0, 50)}..."`);
     console.log("Pensando na melhor pasta...");
     
     const folder = await decideFolder(message.content);
     console.log(`Decisão: ${folder}`);
 
-    const { yaml, filename } = formatSingleNote(message.content, message.author.username);
+    let finalContent = message.content;
+
+    // Baixar anexos e gerar links nativos
+    if (message.attachments.size > 0) {
+        console.log(`Baixando ${message.attachments.size} anexos para a pasta ${folder}...`);
+        for (const attachment of message.attachments.values()) {
+            const safeFilename = `${Date.now()}-${attachment.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const destPath = path.join(VAULT_PATH, folder, safeFilename);
+            
+            const downloaded = await downloadFile(attachment.url, destPath);
+            if (downloaded) {
+                const obsidianLink = isImage(safeFilename) ? `![[${safeFilename}]]` : `[[${safeFilename}]]`;
+                finalContent += `\n${obsidianLink}`;
+            }
+        }
+    }
+
+    const { yaml, filename } = formatSingleNote(finalContent, message.author.username);
 
     try {
         const fullPath = path.join(VAULT_PATH, folder, filename);
