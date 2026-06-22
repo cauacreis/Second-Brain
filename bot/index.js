@@ -152,19 +152,27 @@ async function transcribeHistory(messages, targetFolderStr) {
         ${historyRaw}
         `;
 
-        let response;
+        let responseText = "";
+        let isFallback = false;
+        
         let retries = 3;
         const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         while(retries > 0) {
             try {
-                response = await ai.models.generateContent({
+                const response = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
                     contents: prompt,
                 });
+                responseText = response.text;
                 break;
             } catch(err) {
                 retries--;
-                if(retries === 0) throw err;
+                if(retries === 0) {
+                    console.error("Falha total na IA. Usando modo de emergência (cópia bruta).");
+                    isFallback = true;
+                    responseText = historyRaw;
+                    break;
+                }
                 console.log(`Erro na IA. Retentativas restantes: ${retries}. Aguardando 20s...`);
                 await sleep(20000);
             }
@@ -173,19 +181,23 @@ async function transcribeHistory(messages, targetFolderStr) {
         const today = new Date();
         const dateStr = today.toISOString().split('T')[0];
         
+        const subtitle = isFallback 
+            ? "*⚠️ Cópia bruta de emergência. A Inteligência Artificial estava indisponível no momento do backup.*"
+            : "*Cópia do histórico corrigida ortograficamente pela IA.*";
+
         const yaml = `---
 aliases: [transcricao-canal]
 tags: [#discord-transcricao, #antigravity-brain]
 criado_em: ${dateStr}
 ---
 # Transcrição do Canal
-*Cópia do histórico corrigida ortograficamente pela IA.*
+${subtitle}
 
-${response.text}
-`;
+${responseText}
+\`;
         
-        const filename = `Transcricao-${today.getTime()}.md`;
-        return { yaml, filename };
+        const filename = \`Transcricao-\${today.getTime()}.md\`;
+        return { yaml, filename, isFallback };
 
     } catch (error) {
         console.error("Erro na transcrição da IA:", error);
@@ -288,10 +300,14 @@ client.on(Events.MessageCreate, async message => {
                         const fullPath = path.join(categoryFolder, customFilename);
                         await fs.writeFile(fullPath, result.yaml, 'utf8');
                         console.log(`Salvo: ${fullPath}`);
+                        
+                        if (result.isFallback) {
+                            await message.channel.send(`⚠️ A IA falhou no canal **${channel.name}**. Salvei a cópia bruta de emergência sem correção ortográfica.`);
+                        }
                     }
                 } catch(channelErr) {
-                    console.error(`Falha ao processar o canal ${channel.name}:`, channelErr);
-                    await message.channel.send(`⚠️ Pulei o canal **${channel.name}** devido a erro na API. Continuando com os próximos...`);
+                    console.error(`Falha fatal e inesperada no canal ${channel.name}:`, channelErr);
+                    await message.channel.send(`⚠️ Pulei o canal **${channel.name}** devido a um erro inesperado. Continuando com os próximos...`);
                 }
 
                 console.log("Pausando 35 segundos para evitar bloqueio (limite de requisições) da API do Gemini...");
