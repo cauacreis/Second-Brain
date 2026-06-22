@@ -135,19 +135,16 @@ async function synthesizeHistory(messages) {
         }
 
         const prompt = `
-        Atue como um arquivista e organizador especialista.
-        Abaixo está o histórico bruto das últimas 100 mensagens de um canal do Discord.
+        Abaixo está o histórico das últimas 100 mensagens de um canal do Discord.
         Muitas mensagens possuem links nativos do Obsidian como ![[imagem.png]] ou [[documento.pdf]].
         
         Sua tarefa:
-        1. Limpe o histórico, transformando-o em um documento coeso e fluido.
-        2. Corrija erros óbvios de digitação e gramática.
-        3. Organize a informação por tópicos abordados.
-        4. PRESERVE TODOS OS LINKS DO OBSIDIAN EXATAMENTE COMO ESTÃO (![[...]] e [[...]]). Não mude o formato deles.
-        5. Não invente nenhuma informação nova, apenas reestruture o que foi dito.
-        6. Crie um breve resumo executivo no início.
+        1. COPIE TODO o histórico de mensagens EXATAMENTE como foi escrito. Não resuma nem condense.
+        2. Corrija apenas erros óbvios de digitação, ortografia e gramática que encontrar pelo caminho.
+        3. PRESERVE TODOS OS LINKS DO OBSIDIAN EXATAMENTE COMO ESTÃO (![[...]] e [[...]]). Não mude o formato deles.
+        4. Preserve o nome dos autores e a estrutura de chat ([Autor]: Mensagem).
         
-        Retorne APENAS o conteúdo em Markdown pronto para ser salvo.
+        Retorne APENAS o conteúdo corrigido em Markdown pronto para ser salvo.
         
         HISTÓRICO BRUTO:
         ${historyRaw}
@@ -162,12 +159,12 @@ async function synthesizeHistory(messages) {
         const dateStr = today.toISOString().split('T')[0];
         
         const yaml = `---
-aliases: [sintese-canal]
-tags: [#discord-sintese, #antigravity-brain]
+aliases: [transcricao-canal]
+tags: [#discord-transcricao, #antigravity-brain]
 criado_em: ${dateStr}
 ---
-# Síntese do Canal
-*Gerado por Inteligência Artificial a partir das últimas 100 mensagens.*
+# Transcrição do Canal
+*Cópia do histórico corrigida ortograficamente pela IA.*
 
 ${response.text}
 `;
