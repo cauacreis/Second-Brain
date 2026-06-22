@@ -5,7 +5,7 @@ Um ecossistema Open Source desenhado para unificar as suas anotações. Ele cone
 ## 🌟 O que esse projeto faz?
 
 Em vez de ter informações espalhadas por vários lugares, este projeto transforma o seu **Obsidian** no núcleo central do seu conhecimento:
-1. **Ponte Discord:** Um Bot em Node.js com IA que "escuta" o seu servidor privado do Discord. Sempre que você mandar uma mensagem (uma ideia, um link, um resumo), o bot usa a API do Gemini para descobrir do que se trata e salva automaticamente um arquivo Markdown na pasta correta do seu Obsidian.
+1. **Ponte Discord:** Um Bot em Node.js com IA que obedece aos seus comandos no Discord. Ele só age quando mencionado, podendo salvar uma mensagem específica, transcrever as últimas 100 mensagens de um canal, ou até exportar todos os canais de uma Categoria inteira direto para o seu Obsidian.
 2. **Ponte Antigravity:** Uma configuração (Skill) que ensina o seu assistente local Antigravity a ler, pesquisar e salvar dados no seu Obsidian, não importa em qual projeto você esteja trabalhando.
 3. **Suporte a Anexos Offline:** Se você enviar imagens, PDFs ou documentos no Discord, o bot fará o download físico desses arquivos e os salvará diretamente na mesma pasta da sua anotação no Obsidian, gerando links nativos (`![[imagem.png]]`). Adeus links quebrados!
 
@@ -46,7 +46,10 @@ Execute o comando:
 ```bash
 npm start
 ```
-Pronto! Se tudo estiver certo, ele dirá que está online. Vá no seu servidor privado, digite uma mensagem e observe a magia acontecer no seu Obsidian (ele vai reagir à sua mensagem com um 🧠).
+Pronto! O bot agora está online e escutando. Ele só responde se for **mencionado** (`@SecondBrainBot`). Você tem 3 comandos à disposição:
+1. **Salvar mensagem:** Responda a uma mensagem marcando o bot para salvar apenas ela.
+2. **Exportar Categoria:** Escreva `@SecondBrainBot categoria` em qualquer canal para fazer o backup de todos os canais daquela categoria.
+3. **Transcrever Canal:** Apenas marque `@SecondBrainBot` no chat para transcrever as últimas 100 mensagens daquele canal.
 
 ---
 

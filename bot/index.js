@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, ChannelType } from 'discord.js';
 import { GoogleGenAI } from '@google/genai';
 import * as dotenv from 'dotenv';
 import fs from 'fs/promises';
@@ -34,7 +34,6 @@ async function downloadFile(url, destPath) {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Unexpected response ${response.statusText}`);
         
-        // Use stream pipeline for better memory management with large files (PDFs, videos)
         await pipeline(response.body, createWriteStream(destPath));
         return true;
     } catch (error) {
@@ -106,8 +105,8 @@ ${content}
     return { yaml, filename };
 }
 
-// Generate history synthesis
-async function synthesizeHistory(messages) {
+// Generate history transcription
+async function transcribeHistory(messages, targetFolderStr) {
     try {
         let historyRaw = "";
         
@@ -116,12 +115,11 @@ async function synthesizeHistory(messages) {
 
             let contentWithLocalFiles = msg.content;
             
-            // Download attachments for history and add Obsidian links
+            // Download attachments
             if (msg.attachments.size > 0) {
                 for (const attachment of msg.attachments.values()) {
                     const safeFilename = `${Date.now()}-${attachment.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-                    const targetFolder = '00_Inbox'; // Synthesis always goes to 00_Inbox
-                    const destPath = path.join(VAULT_PATH, targetFolder, safeFilename);
+                    const destPath = path.join(VAULT_PATH, targetFolderStr, safeFilename);
                     
                     const downloaded = await downloadFile(attachment.url, destPath);
                     if (downloaded) {
@@ -134,8 +132,12 @@ async function synthesizeHistory(messages) {
             historyRaw += `[${msg.author.username}]: ${contentWithLocalFiles}\n---\n`;
         }
 
+        if (historyRaw.trim() === "") {
+            return null; // Empty channel
+        }
+
         const prompt = `
-        Abaixo está o histórico das últimas 100 mensagens de um canal do Discord.
+        Abaixo está o histórico das mensagens de um canal do Discord.
         Muitas mensagens possuem links nativos do Obsidian como ![[imagem.png]] ou [[documento.pdf]].
         
         Sua tarefa:
@@ -169,11 +171,11 @@ criado_em: ${dateStr}
 ${response.text}
 `;
         
-        const filename = `Sintese-Discord-${today.getTime()}.md`;
+        const filename = `Transcricao-${today.getTime()}.md`;
         return { yaml, filename };
 
     } catch (error) {
-        console.error("Erro na síntese da IA:", error);
+        console.error("Erro na transcrição da IA:", error);
         throw error;
     }
 }
@@ -184,67 +186,126 @@ client.once(Events.ClientReady, readyClient => {
 });
 
 client.on(Events.MessageCreate, async message => {
-    if (message.author.bot) return;
+    // IGNORA QUALQUER MENSAGEM SE NÃO FOR UMA MENÇÃO AO BOT OU FOR DE OUTRO BOT
+    if (message.author.bot || !message.mentions.has(client.user.id)) return;
 
-    // ======== MODO ARQUIVISTA (SÍNTESE DE HISTÓRICO) ========
-    if (message.mentions.has(client.user.id)) {
+    const contentLower = message.content.toLowerCase();
+
+    // =========================================================
+    // COMANDO 1: SALVAR MENSAGEM ESPECÍFICA (VIA RESPONDER)
+    // =========================================================
+    if (message.reference && message.reference.messageId) {
         try {
-            console.log("Iniciando Modo Arquivista...");
-            await message.react('⏳');
+            await message.react('🔍');
+            console.log("Comando: Salvar mensagem específica");
+            
+            // Puxa a mensagem original que foi respondida
+            const targetMessage = await message.channel.messages.fetch(message.reference.messageId);
+            
+            if (targetMessage.author.bot) {
+                await message.reply("Não posso salvar mensagens de outros bots.");
+                return;
+            }
 
-            const fetchedMessages = await message.channel.messages.fetch({ limit: 100 });
-            console.log(`Analisando ${fetchedMessages.size} mensagens e baixando anexos...`);
-            
-            const { yaml, filename } = await synthesizeHistory(fetchedMessages);
-            
-            const fullPath = path.join(VAULT_PATH, '00_Inbox', filename);
+            const folder = await decideFolder(targetMessage.content);
+            let finalContent = targetMessage.content;
+
+            if (targetMessage.attachments.size > 0) {
+                for (const attachment of targetMessage.attachments.values()) {
+                    const safeFilename = `${Date.now()}-${attachment.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+                    const destPath = path.join(VAULT_PATH, folder, safeFilename);
+                    
+                    const downloaded = await downloadFile(attachment.url, destPath);
+                    if (downloaded) {
+                        const obsidianLink = isImage(safeFilename) ? `![[${safeFilename}]]` : `[[${safeFilename}]]`;
+                        finalContent += `\n${obsidianLink}`;
+                    }
+                }
+            }
+
+            const { yaml, filename } = formatSingleNote(finalContent, targetMessage.author.username);
+            const fullPath = path.join(VAULT_PATH, folder, filename);
             await fs.writeFile(fullPath, yaml, 'utf8');
             
-            console.log(`✅ Síntese salva em: ${fullPath}`);
             await message.react('🧠');
-            await message.reply("✅ Histórico analisado e anexos salvos na sua `00_Inbox`!");
-
+            await message.reply(`✅ Mensagem salva com sucesso em \`${folder}\`!`);
         } catch (error) {
-            console.error("Erro no Modo Arquivista:", error);
+            console.error("Erro no Comando 1:", error);
             await message.react('❌');
-            await message.reply("Houve um erro ao processar o histórico.");
         }
         return;
     }
 
-    // ======== MODO SILENCIOSO (MENSAGEM ÚNICA COM ANEXOS) ========
-    console.log(`\nRecebido: "${message.content.substring(0, 50)}..."`);
-    console.log("Pensando na melhor pasta...");
-    
-    const folder = await decideFolder(message.content);
-    console.log(`Decisão: ${folder}`);
-
-    let finalContent = message.content;
-
-    // Baixar anexos e gerar links nativos
-    if (message.attachments.size > 0) {
-        console.log(`Baixando ${message.attachments.size} anexos para a pasta ${folder}...`);
-        for (const attachment of message.attachments.values()) {
-            const safeFilename = `${Date.now()}-${attachment.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-            const destPath = path.join(VAULT_PATH, folder, safeFilename);
-            
-            const downloaded = await downloadFile(attachment.url, destPath);
-            if (downloaded) {
-                const obsidianLink = isImage(safeFilename) ? `![[${safeFilename}]]` : `[[${safeFilename}]]`;
-                finalContent += `\n${obsidianLink}`;
+    // =========================================================
+    // COMANDO 2: EXPORTAR CATEGORIA INTEIRA
+    // =========================================================
+    if (contentLower.includes('categoria')) {
+        try {
+            const category = message.channel.parent;
+            if (!category) {
+                await message.reply("Este canal não pertence a nenhuma categoria!");
+                return;
             }
+
+            await message.react('⏳');
+            await message.reply(`Iniciando backup em lote da categoria **${category.name}**. Isso pode demorar...`);
+            console.log(`Comando: Exportar Categoria ${category.name}`);
+
+            const safeCatName = category.name.replace(/[^a-zA-Z0-9 -]/g, '').trim();
+            const categoryFolder = path.join(VAULT_PATH, '00_Inbox', safeCatName);
+            
+            // Create the folder for the category
+            await fs.mkdir(categoryFolder, { recursive: true });
+
+            const channels = category.children.cache.filter(c => c.type === ChannelType.GuildText);
+            
+            for (const [channelId, channel] of channels) {
+                console.log(`Lendo canal: ${channel.name}`);
+                const fetchedMessages = await channel.messages.fetch({ limit: 100 });
+                
+                // Pass relative path so attachments go to the same folder
+                const relativePath = path.join('00_Inbox', safeCatName);
+                const result = await transcribeHistory(fetchedMessages, relativePath);
+                
+                if (result) {
+                    // Override filename to be the channel name
+                    const customFilename = `${channel.name.replace(/[^a-zA-Z0-9 -]/g, '')}.md`;
+                    const fullPath = path.join(categoryFolder, customFilename);
+                    await fs.writeFile(fullPath, result.yaml, 'utf8');
+                    console.log(`Salvo: ${fullPath}`);
+                }
+            }
+
+            await message.react('🧠');
+            await message.reply(`✅ Categoria inteira salva com sucesso em \`00_Inbox/${safeCatName}\`!`);
+        } catch (error) {
+            console.error("Erro no Comando 2:", error);
+            await message.react('❌');
+            await message.reply("Houve um erro ao processar a categoria.");
         }
+        return;
     }
 
-    const { yaml, filename } = formatSingleNote(finalContent, message.author.username);
-
+    // =========================================================
+    // COMANDO 3: TRANSCRIÇÃO DE CANAL (PADRÃO)
+    // =========================================================
     try {
-        const fullPath = path.join(VAULT_PATH, folder, filename);
-        await fs.writeFile(fullPath, yaml, 'utf8');
-        console.log(`✅ Salvo com sucesso em: ${fullPath}`);
-        await message.react('🧠');
+        console.log("Comando: Transcrição do Canal atual");
+        await message.react('⏳');
+
+        const fetchedMessages = await message.channel.messages.fetch({ limit: 100 });
+        const result = await transcribeHistory(fetchedMessages, '00_Inbox');
+        
+        if (result) {
+            const fullPath = path.join(VAULT_PATH, '00_Inbox', result.filename);
+            await fs.writeFile(fullPath, result.yaml, 'utf8');
+            await message.react('🧠');
+            await message.reply("✅ Histórico deste canal copiado para a sua `00_Inbox`!");
+        } else {
+            await message.reply("Não encontrei mensagens úteis neste canal.");
+        }
     } catch (error) {
-        console.error("Erro ao salvar arquivo:", error);
+        console.error("Erro no Comando 3:", error);
         await message.react('❌');
     }
 });
