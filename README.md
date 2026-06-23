@@ -31,7 +31,7 @@ O bot possui **3 gatilhos** precisos para você extrair o que importa do Discord
    - **O que faz:** O bot ignora o resto do histórico e salva apenas aquela única mensagem (junto com seus anexos específicos) no seu Obsidian.
 
 3. **Exportar Categoria Inteira (Backup em Massa):**
-   - **Como usar:** Em qualquer canal, envie `@SecondBrainBot categoria`.
+   - **Como usar:** Em qualquer canal, envie `@SecondBrainBot exportar categoria` ou `@SecondBrainBot backup categoria`.
    - **O que faz:** O bot mapeia todos os canais de texto pertencentes à categoria atual. Ele iterará sobre cada canal (com uma pausa de segurança de 35s entre eles para evitar rate limit da API), criará uma subpasta individual para cada canal no Obsidian, e baixará todos os históricos e arquivos de forma incrivelmente organizada.
 
 ---

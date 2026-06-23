@@ -146,7 +146,7 @@ async function transcribeHistory(messages, targetFolderStr) {
         3. PRESERVE TODOS OS LINKS DO OBSIDIAN EXATAMENTE COMO ESTÃO (![[...]] e [[...]]). Não mude o formato deles.
         4. Preserve o nome dos autores e a estrutura de chat ([Autor]: Mensagem).
         
-        Retorne APENAS o conteúdo corrigido em Markdown pronto para ser salvo.
+        Retorne ABSOLUTAMENTE APENAS o conteúdo corrigido em Markdown pronto para ser salvo. NÃO ADICIONE NENHUMA FRASE DE INTRODUÇÃO (ex: "Aqui está o histórico").
         
         HISTÓRICO BRUTO:
         ${historyRaw}
@@ -264,7 +264,7 @@ client.on(Events.MessageCreate, async message => {
     // =========================================================
     // COMANDO 2: EXPORTAR CATEGORIA INTEIRA
     // =========================================================
-    if (contentLower.includes('categoria')) {
+    if (contentLower.includes('exportar categoria') || contentLower.includes('backup categoria')) {
         try {
             const category = message.channel.parent;
             if (!category) {
@@ -283,6 +283,12 @@ client.on(Events.MessageCreate, async message => {
             await fs.mkdir(categoryFolder, { recursive: true });
 
             const channels = category.children.cache.filter(c => c.type === ChannelType.GuildText);
+            if (channels.size === 0) {
+                await message.react('❌');
+                await message.reply("Esta categoria não possui nenhum canal de texto para fazer backup.");
+                return;
+            }
+
             const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             
             for (const [channelId, channel] of channels) {
