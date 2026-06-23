@@ -13,7 +13,7 @@ O caminho absoluto para o Vault do usuário é:
 ## Estrutura do Vault
 O Vault segue uma estrutura baseada no método PARA:
 - `00_Inbox/`: Para resumos, anotações rápidas, memórias e pensamentos não categorizados.
-- `10_Projetos/`: Notas sobre projetos em andamento (com começo, meio e fim).
+- `10_Projetos/`: Notas sobre projetos em andamento (com começo, meio e fim). **REGRA DE OURO:** Sempre crie uma subpasta dedicada para cada projeto (ex: `10_Projetos/OrenAI/Diario_OrenAI.md`). Nunca deixe arquivos soltos nessa raiz.
 - `20_Areas/`: Notas sobre áreas de interesse e responsabilidade contínua (ex: `Java`, `Desenvolvimento Web`).
 - `30_Recursos/`: Referências, links, artigos, tutoriais, snippets de código úteis.
 - `40_Arquivo/`: Projetos finalizados ou notas inativas.
@@ -46,3 +46,7 @@ Quando o usuário pedir para consultar algo do passado ou buscar no Second Brain
 * Se o usuário pedir para adicionar mais informações a um tópico já existente, busque a nota e use `multi_replace_file_content` ou `replace_file_content` para atualizar a nota, em vez de criar uma nova.
 * **Organização Contextual de Anexos (MUITO IMPORTANTE):** Ao formatar notas brutas (como transcrições do Discord) que contêm links de imagens (`![[imagem.png]]`) e PDFs (`[[arquivo.pdf]]`), **NUNCA** agrupe todos os anexos no final ou no início do arquivo em um bloco único chamado "Anexos".
 * Você deve **distribuir os anexos contextualmente** ao longo dos tópicos da nota. Se o texto fala sobre "Laços de Repetição", coloque o PDF ou imagem referente a "Laços de Repetição" imediatamente abaixo dessa seção. Cada anexo deve ilustrar ou complementar a seção correspondente.
+
+### 4. Criação e Uso de Templates (Conteúdo/YouTube)
+* Quando o usuário pedir para planejar ou criar um conteúdo estruturado (como um roteiro para o YouTube), verifique a pasta `99_AI_Templates/`.
+* Exemplo: Para roteiros, leia o arquivo `Template_Roteiro_YouTube.md`, preencha as etapas seguindo as Fórmulas Validadas de CTR (gatilhos de emoção, curiosidade) exigidas pelo template, e salve o arquivo final dentro de sua respectiva área, como `20_Areas/Canal YouTube/Roteiros/`.
